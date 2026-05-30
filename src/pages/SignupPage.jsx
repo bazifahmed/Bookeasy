@@ -5,34 +5,18 @@ import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Loader2 } from "lucide-react";
 import { useAuth } from "../content/AuthContext";
-import { supabase } from "../lib/supabase";
 
 const signupSchema = z
   .object({
-    businessName: z
-      .string()
-      .min(2, "Business name must be at least 2 characters"),
+    businessName: z.string().min(2, "Business name must be at least 2 characters"),
     email: z.string().email("Please enter a valid email"),
-    password: z
-      .string()
-      .min(8, "Password must be at least 8 characters"),
+    password: z.string().min(8, "Password must be at least 8 characters"),
     confirmPassword: z.string(),
   })
   .refine((data) => data.password === data.confirmPassword, {
     message: "Passwords do not match",
     path: ["confirmPassword"],
   });
-
-const slugify = (value) => {
-  return value
-    .toLowerCase()
-    .trim()
-    .replace(/[^a-z0-9\s-]/g, "")
-    .replace(/\s+/g, "-")
-    .replace(/-+/g, "-")
-    .slice(0, 60)
-    || `business-${Date.now()}`;
-};
 
 export default function SignupPage() {
   const navigate = useNavigate();
@@ -54,162 +38,94 @@ export default function SignupPage() {
       setLoading(true);
       setAuthError("");
 
-      const signUpData = await signUp(data.email, data.password);
-      const user = signUpData?.user || signUpData?.session?.user;
+      const result = await signUp(
+        data.email,
+        data.password,
+        data.businessName
+      );
 
-      if (!user) {
-        throw new Error(
-          "Account created, but we could not establish your session. Please verify your email and sign in."
-        );
+      if (result?.error) {
+        setAuthError(result.error.message);
+        return;
       }
 
-      const businessSlug = slugify(data.businessName);
-      const { error: businessError } = await supabase.from("businesses").insert({
-        user_id: user.id,
-        business_name: data.businessName.trim(),
-        owner_name: "",
-        service_type: "Other",
-        description: "",
-        slug: businessSlug,
-        brand_color: "#6366f1",
-        phone: "",
-        city: "",
-        logo_url: "",
-        created_at: new Date().toISOString(),
-      });
-
-      if (businessError) {
-        throw businessError;
-      }
-
-      navigate("/dashboard/settings", {
+      navigate("/login", {
         state: {
-          message: `Welcome to BookEasy, ${data.businessName}!`,
+          message: "Account created successfully. Please verify your email.",
         },
       });
     } catch (err) {
-      setAuthError(err?.message || "Something went wrong. Please try again.");
+      setAuthError(err.message || "Something went wrong");
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4 py-10">
-      <div className="w-full max-w-md bg-white rounded-2xl shadow-lg p-8">
-        <div className="text-center mb-8">
-          <h1 className="text-4xl font-bold text-indigo-600">BookEasy</h1>
-          <p className="text-gray-500 mt-2">
-            Create your booking business account
-          </p>
-        </div>
+    <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
+      <div className="w-full max-w-md bg-white p-8 rounded-2xl shadow-lg">
+
+        <h1 className="text-3xl font-bold text-center text-indigo-600">
+          BookEasy
+        </h1>
+
+        <p className="text-center text-gray-500 mt-2 mb-6">
+          Create your account
+        </p>
 
         {authError && (
-          <div className="mb-4 bg-red-100 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">
+          <div className="bg-red-100 text-red-700 p-3 rounded-lg mb-4">
             {authError}
           </div>
         )}
 
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Business Name
-            </label>
+        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
 
-            <input
-              type="text"
-              placeholder="Your business name"
-              {...register("businessName")}
-              className="w-full border border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-            />
+          <input
+            placeholder="Business Name"
+            {...register("businessName")}
+            className="w-full p-3 border rounded-lg"
+          />
+          <p className="text-red-500 text-sm">{errors.businessName?.message}</p>
 
-            {errors.businessName && (
-              <p className="text-red-500 text-sm mt-1">
-                {errors.businessName.message}
-              </p>
-            )}
-          </div>
+          <input
+            placeholder="Email"
+            {...register("email")}
+            className="w-full p-3 border rounded-lg"
+          />
+          <p className="text-red-500 text-sm">{errors.email?.message}</p>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Email
-            </label>
+          <input
+            type="password"
+            placeholder="Password"
+            {...register("password")}
+            className="w-full p-3 border rounded-lg"
+          />
+          <p className="text-red-500 text-sm">{errors.password?.message}</p>
 
-            <input
-              type="email"
-              placeholder="you@example.com"
-              {...register("email")}
-              className="w-full border border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-            />
-
-            {errors.email && (
-              <p className="text-red-500 text-sm mt-1">
-                {errors.email.message}
-              </p>
-            )}
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Password
-            </label>
-
-            <input
-              type="password"
-              placeholder="Minimum 8 characters"
-              {...register("password")}
-              className="w-full border border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-            />
-
-            {errors.password && (
-              <p className="text-red-500 text-sm mt-1">
-                {errors.password.message}
-              </p>
-            )}
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Confirm Password
-            </label>
-
-            <input
-              type="password"
-              placeholder="Confirm your password"
-              {...register("confirmPassword")}
-              className="w-full border border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-            />
-
-            {errors.confirmPassword && (
-              <p className="text-red-500 text-sm mt-1">
-                {errors.confirmPassword.message}
-              </p>
-            )}
-          </div>
+          <input
+            type="password"
+            placeholder="Confirm Password"
+            {...register("confirmPassword")}
+            className="w-full p-3 border rounded-lg"
+          />
+          <p className="text-red-500 text-sm">
+            {errors.confirmPassword?.message}
+          </p>
 
           <button
-            type="submit"
             disabled={loading}
-            className="w-full bg-indigo-600 hover:bg-indigo-700 transition text-white py-3 rounded-lg font-semibold flex items-center justify-center gap-2 disabled:opacity-70"
+            className="w-full bg-indigo-600 text-white p-3 rounded-lg flex justify-center gap-2"
           >
-            {loading ? (
-              <>
-                <Loader2 className="animate-spin h-5 w-5" />
-                Creating Account...
-              </>
-            ) : (
-              "Create Account"
-            )}
+            {loading && <Loader2 className="animate-spin" />}
+            {loading ? "Creating..." : "Create Account"}
           </button>
         </form>
 
-        <p className="text-center text-sm text-gray-600 mt-6">
+        <p className="text-center text-sm mt-4">
           Already have an account?{" "}
-          <Link
-            to="/login"
-            className="text-indigo-600 hover:text-indigo-700 font-medium"
-          >
-            Sign in
+          <Link className="text-indigo-600" to="/login">
+            Login
           </Link>
         </p>
       </div>

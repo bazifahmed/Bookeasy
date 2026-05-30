@@ -43,11 +43,24 @@ const generateTimeOptions = () => {
 
 const timeOptions = generateTimeOptions();
 
+// DB stores days as integers: Monday=1 ... Sunday=0 (matching JS getDay())
+// We use a consistent 0=Sunday mapping here aligned to the schema (0–6)
+const DAY_INDEX = {
+  Sunday: 0,
+  Monday: 1,
+  Tuesday: 2,
+  Wednesday: 3,
+  Thursday: 4,
+  Friday: 5,
+  Saturday: 6,
+};
+
 export default function AvailabilityPage() {
   const [schedule, setSchedule] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState("");
+  const [businessId, setBusinessId] = useState(null);
 
   useEffect(() => {
     fetchAvailability();
@@ -55,7 +68,7 @@ export default function AvailabilityPage() {
 
   const defaultSchedule = daysOfWeek.map((day) => ({
     day,
-    enabled: false,
+    is_active: false,
     start_time: "09:00",
     end_time: "17:00",
   }));
@@ -63,10 +76,34 @@ export default function AvailabilityPage() {
   const fetchAvailability = async () => {
     setLoading(true);
 
+    // 1. Get the current user's business_id
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      setLoading(false);
+      return;
+    }
+
+    const { data: business, error: bizError } = await supabase
+      .from("businesses")
+      .select("id")
+      .eq("user_id", user.id)
+      .single();
+
+    if (bizError || !business) {
+      console.error("Error loading business:", bizError);
+      setSchedule(defaultSchedule);
+      setLoading(false);
+      return;
+    }
+
+    setBusinessId(business.id);
+
+    // 2. Fetch availability rows for this business
     const { data, error } = await supabase
       .from("availability")
       .select("*")
-      .order("id", { ascending: true });
+      .eq("business_id", business.id)
+      .order("day_of_week", { ascending: true });
 
     if (error) {
       console.error("Error loading availability:", error);
@@ -81,17 +118,23 @@ export default function AvailabilityPage() {
       return;
     }
 
+    // 3. Merge DB rows (keyed by day_of_week integer) into our day-name list
     const mergedSchedule = daysOfWeek.map((day) => {
-      const existing = data.find((item) => item.day === day);
+      const existing = data.find((item) => item.day_of_week === DAY_INDEX[day]);
 
-      return (
-        existing || {
-          day,
-          enabled: false,
-          start_time: "09:00",
-          end_time: "17:00",
-        }
-      );
+      return existing
+        ? {
+            day,
+            is_active: existing.is_active,
+            start_time: existing.start_time?.slice(0, 5) ?? "09:00",
+            end_time: existing.end_time?.slice(0, 5) ?? "17:00",
+          }
+        : {
+            day,
+            is_active: false,
+            start_time: "09:00",
+            end_time: "17:00",
+          };
     });
 
     setSchedule(mergedSchedule);
@@ -101,7 +144,7 @@ export default function AvailabilityPage() {
   const handleToggle = (index) => {
     const updated = [...schedule];
 
-    updated[index].enabled = !updated[index].enabled;
+    updated[index] = { ...updated[index], is_active: !updated[index].is_active };
 
     setSchedule(updated);
   };
@@ -117,9 +160,16 @@ export default function AvailabilityPage() {
   const saveSchedule = async () => {
     setSaving(true);
 
+    if (!businessId) {
+      setSaving(false);
+      alert("Business not found. Please refresh and try again.");
+      return;
+    }
+
     const payload = schedule.map((item) => ({
-      day: item.day,
-      enabled: item.enabled,
+      business_id: businessId,
+      day_of_week: DAY_INDEX[item.day],
+      is_active: item.is_active,
       start_time: item.start_time,
       end_time: item.end_time,
     }));
@@ -127,7 +177,7 @@ export default function AvailabilityPage() {
     const { error } = await supabase
       .from("availability")
       .upsert(payload, {
-        onConflict: "day",
+        onConflict: "business_id,day_of_week",
       });
 
     setSaving(false);
@@ -176,30 +226,30 @@ export default function AvailabilityPage() {
                 <button
                   onClick={() => handleToggle(index)}
                   className={`w-14 h-8 flex items-center rounded-full p-1 transition ${
-                    item.enabled ? "bg-green-500" : "bg-gray-300"
+                    item.is_active ? "bg-green-500" : "bg-gray-300"
                   }`}
                 >
                   <div
                     className={`bg-white w-6 h-6 rounded-full shadow-md transform transition ${
-                      item.enabled ? "translate-x-6" : ""
+                      item.is_active ? "translate-x-6" : ""
                     }`}
                   />
                 </button>
 
                 <span className="text-sm text-gray-600">
-                  {item.enabled ? "Enabled" : "Disabled"}
+                  {item.is_active ? "Enabled" : "Disabled"}
                 </span>
               </div>
 
               {/* Start Time */}
               <select
                 value={item.start_time}
-                disabled={!item.enabled}
+                disabled={!item.is_active}
                 onChange={(e) =>
                   handleTimeChange(index, "start_time", e.target.value)
                 }
                 className={`border rounded-lg px-3 py-2 w-full ${
-                  item.enabled
+                  item.is_active
                     ? "bg-white border-gray-300"
                     : "bg-gray-100 text-gray-400 cursor-not-allowed"
                 }`}
@@ -214,12 +264,12 @@ export default function AvailabilityPage() {
               {/* End Time */}
               <select
                 value={item.end_time}
-                disabled={!item.enabled}
+                disabled={!item.is_active}
                 onChange={(e) =>
                   handleTimeChange(index, "end_time", e.target.value)
                 }
                 className={`border rounded-lg px-3 py-2 w-full ${
-                  item.enabled
+                  item.is_active
                     ? "bg-white border-gray-300"
                     : "bg-gray-100 text-gray-400 cursor-not-allowed"
                 }`}

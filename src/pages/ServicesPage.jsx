@@ -20,7 +20,7 @@ const ServicesPage = () => {
   // Form State
   const [formData, setFormData] = useState({
     name: '',
-    duration: '30',
+    duration_minutes: '30',
     price: '',
     description: '',
     is_active: true
@@ -52,23 +52,42 @@ const ServicesPage = () => {
       setEditingService(service);
       setFormData({
         name: service.name,
-        duration: service.duration.toString(),
+        duration_minutes: service.duration_minutes.toString(),
         price: service.price.toString(),
         description: service.description || '',
         is_active: service.is_active
       });
     } else {
       setEditingService(null);
-      setFormData({ name: '', duration: '30', price: '', description: '', is_active: true });
+      setFormData({ name: '', duration_minutes: '30', price: '', description: '', is_active: true });
     }
     setIsModalOpen(true);
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      alert('You must be logged in to save a service.');
+      return;
+    }
+
+    const { data: business, error: bizError } = await supabase
+      .from('businesses')
+      .select('id')
+      .eq('user_id', user.id)
+      .single();
+
+    if (bizError || !business) {
+      alert('Could not find your business. Please refresh and try again.');
+      return;
+    }
+
     const payload = {
+      business_id: business.id,
       name: formData.name,
-      duration: parseInt(formData.duration),
+      duration_minutes: parseInt(formData.duration_minutes),
       price: parseFloat(formData.price),
       description: formData.description,
       is_active: formData.is_active,
@@ -168,7 +187,7 @@ const ServicesPage = () => {
               <div className="space-y-2 mb-6">
                 <div className="flex items-center text-gray-600 text-sm">
                   <Clock size={16} className="mr-2" />
-                  {service.duration} minutes
+                  {service.duration_minutes} minutes
                 </div>
                 <div className="flex items-center text-gray-600 text-sm font-semibold">
                   <DollarSign size={16} className="mr-1 text-green-600" />
@@ -231,8 +250,8 @@ const ServicesPage = () => {
                   <label className="block text-sm font-medium text-gray-700 mb-1">Duration</label>
                   <select
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                    value={formData.duration}
-                    onChange={(e) => setFormData({ ...formData, duration: e.target.value })}
+                    value={formData.duration_minutes}
+                    onChange={(e) => setFormData({ ...formData, duration_minutes: e.target.value })}
                   >
                     {durationOptions.map(opt => (
                       <option key={opt} value={opt}>{opt} mins</option>
