@@ -118,7 +118,7 @@ const BookingPage = () => {
       
       if (availabilityError) throw availabilityError;
       
-      if (!availabilityData || !availabilityData.is_available) {
+      if (!availabilityData || !availabilityData.is_active) {
         setAvailableSlots([]);
         return;
       }
@@ -127,21 +127,21 @@ const BookingPage = () => {
       const slots = generateTimeSlots(
         availabilityData.start_time,
         availabilityData.end_time,
-        selectedService.duration
+        selectedService.duration_minutes
       );
       
       // Fetch existing bookings for this date
       const dateStr = format(selectedDate, 'yyyy-MM-dd');
       const { data: bookingsData, error: bookingsError } = await supabase
         .from('bookings')
-        .select('booking_time')
+        .select('start_time')
         .eq('business_id', business.id)
         .eq('booking_date', dateStr)
         .eq('status', 'confirmed');
       
       if (bookingsError) throw bookingsError;
       
-      const bookedTimes = new Set(bookingsData.map(b => b.booking_time));
+      const bookedTimes = new Set(bookingsData.map(b => b.start_time));
       
       // Fetch blocked times for this date
       const { data: blockedData, error: blockedError } = await supabase
@@ -159,7 +159,7 @@ const BookingPage = () => {
         
         // Check if within any blocked period
         const slotDateTime = setHours(setMinutes(selectedDate, parseInt(slot.time.split(':')[1])), parseInt(slot.time.split(':')[0]));
-        const slotEndDateTime = new Date(slotDateTime.getTime() + selectedService.duration * 60000);
+        const slotEndDateTime = new Date(slotDateTime.getTime() + selectedService.duration_minutes * 60000);
         
         for (const block of blockedData) {
           const blockStart = parseISO(`${dateStr}T${block.start_time}`);
@@ -241,15 +241,14 @@ const BookingPage = () => {
       const bookingData = {
         business_id: business.id,
         service_id: selectedService.id,
-        customer_name: formData.full_name,
-        customer_email: formData.email,
-        customer_phone: formData.phone || null,
+        client_name: formData.full_name,
+        client_email: formData.email,
+        client_phone: formData.phone || null,
         notes: formData.notes || null,
         booking_date: format(selectedDate, 'yyyy-MM-dd'),
-        booking_time: selectedTime.time,
-        booking_datetime: bookingDateTime.toISOString(),
+        start_time: selectedTime.time,
+        end_time: format(new Date(bookingDateTime.getTime() + selectedService.duration_minutes * 60000), 'HH:mm'),
         status: 'confirmed',
-        total_price: selectedService.price,
         created_at: new Date().toISOString()
       };
       
@@ -420,7 +419,7 @@ const BookingPage = () => {
                   className="border-2 border-gray-200 rounded-lg p-4 text-left hover:border-blue-500 hover:shadow-md transition-all"
                 >
                   <h3 className="font-semibold text-lg text-gray-800">{service.name}</h3>
-                  <p className="text-sm text-gray-600 mt-1">{service.duration} minutes</p>
+                  <p className="text-sm text-gray-600 mt-1">{service.duration_minutes} minutes</p>
                   <p className="text-xl font-bold text-blue-600 mt-2">${service.price}</p>
                   {service.description && (
                     <p className="text-sm text-gray-500 mt-2">{service.description}</p>
@@ -553,7 +552,7 @@ const BookingPage = () => {
                   </div>
                   <div>
                     <p className="text-sm text-gray-600">Duration</p>
-                    <p className="font-medium text-gray-800">{selectedService.duration} minutes</p>
+                    <p className="font-medium text-gray-800">{selectedService.duration_minutes} minutes</p>
                   </div>
                   <div className="border-t pt-3 mt-3">
                     <p className="text-sm text-gray-600">Total Price</p>

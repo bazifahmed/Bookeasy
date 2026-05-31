@@ -39,7 +39,7 @@ const BookingsPage = () => {
           services (
             name,
             price,
-            duration
+            duration:duration_minutes
           )
         `)
         .eq('business_id', user.id)
